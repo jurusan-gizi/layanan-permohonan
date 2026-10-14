@@ -112,25 +112,32 @@
         <label for="s-catatan">Catatan untuk mahasiswa</label>
         <textarea id="s-catatan" maxlength="500" placeholder="mis. Sudah diteruskan ke bagian akademik Direktorat 15/10">${esc(d.catatan)}</textarea>
         ${d.diperbarui ? `<p class="bantu-field">Terakhir diperbarui: ${esc(d.diperbarui)}</p>` : ''}
+        ${(d.adminField || []).map((f) => `
+          <label for="adm-${esc(f.id)}">${esc(f.label)}${f.wajib ? '<span class="wajib">*</span>' : ''}</label>
+          <input id="adm-${esc(f.id)}" ${f.tipe === 'tanggal' ? 'type="date"' : ''} value="${esc(d.adminIsi[f.id] || '')}">`).join('')}
         <p id="pesan-form" class="pesan" role="alert" hidden></p>
+        ${d.surat ? `<button type="button" class="btn wa" id="btn-docx" style="background:#1d4ed8;margin-top:18px">📄 Unduh draf surat (.docx) untuk Srikandi</button>
+          <p class="bantu-field">Nomor, tanggal, tanda tangan & nama penandatangan sengaja dikosongkan (diisi Srikandi). Status otomatis menjadi <b>Diproses</b>.</p>` : ''}
         <button type="submit" class="btn utama" id="btn-simpan">Simpan status</button>
         ${d.hp ? `<a class="btn sekunder" href="https://wa.me/${encodeURIComponent(d.hp)}?text=${encodeURIComponent(sapa)}" target="_blank" rel="noopener">💬 Hubungi mahasiswa via WA</a>` : ''}
-        <a class="btn sekunder" href="https://wa.me/${encodeURIComponent(d.waDirektorat)}?text=${encodeURIComponent(d.pesanDirektorat)}" target="_blank" rel="noopener">📤 Teruskan ke admin Direktorat</a>
+        ${d.pesanDirektorat ? `<a class="btn sekunder" href="https://wa.me/${encodeURIComponent(d.waDirektorat)}?text=${encodeURIComponent(d.pesanDirektorat)}" target="_blank" rel="noopener">📤 Teruskan ke admin Direktorat</a>` : ''}
         <button type="button" class="btn sekunder" id="btn-kembali">← Kembali ke daftar</button>
       </form>`;
     document.getElementById('btn-kembali').onclick = daftarPantau;
+    const btnDocx = document.getElementById('btn-docx');
+    if (btnDocx) btnDocx.onclick = () => unduhDraf(d, btnDocx);
     document.getElementById('form-status').addEventListener('submit', async (e) => {
       e.preventDefault();
       const btn = document.getElementById('btn-simpan');
       btn.disabled = true; btn.innerHTML = '<span class="putar kecil"></span> Menyimpan…';
       try {
         const res = await api({ aksi: 'ubahStatus', token: sesi.token, no: d.no,
-          status: document.getElementById('s-status').value, catatan: document.getElementById('s-catatan').value });
+          status: document.getElementById('s-status').value, catatan: document.getElementById('s-catatan').value, admin: isianAdmin(d) });
         if (!res.ok) {
           if (res.kode === 'AUTH') { SSO.keluar(false); return tampilMasuk('Sesi berakhir, silakan masuk lagi.'); }
           return pesanForm(res.pesan || 'Gagal menyimpan.');
         }
-        Object.assign(d, { status: res.status, catatan: res.catatan, diperbarui: res.diperbarui });
+        Object.assign(d, { status: res.status, catatan: res.catatan, diperbarui: res.diperbarui, adminIsi: isianAdmin(d) });
         daftarPantau();
       } catch (err) {
         pesanForm(navigator.onLine ? 'Server tidak merespons. Coba lagi.' : 'Tidak ada koneksi internet.');
@@ -214,6 +221,8 @@
       <span class="status ${esc(kelas)}">${esc(r.status)}</span>
       <span class="r-info">${esc(r.no)} · ${esc(tglWaktu(r.waktu))}</span>
       ${r.catatan ? `<span class="r-catatan">💬 ${esc(r.catatan)}</span>` : ''}
+      ${r.surat && r.status === 'Selesai' ? `<a class="r-wa" href="https://jurusan-gizi.github.io/Kantor-Virtual/">📄 Unduh di Cari Surat</a>` : ''}
+      ${r.wa && r.pesan && (r.status === 'Diajukan' || r.status === 'Diproses') ? `<a class="r-wa" href="https://wa.me/${encodeURIComponent(r.wa)}?text=${encodeURIComponent(r.pesan)}" target="_blank" rel="noopener">📲 Kirim ${r.status === 'Diajukan' ? '' : 'ulang '}ke WA admin</a>` : ''}
     </li>`;
   }
 
@@ -298,6 +307,23 @@
   }
 
   function sukses(l, res) {
+    if (res.surat) {
+      $isi.innerHTML = `
+        <section class="kartu sukses">
+          <div class="centang" aria-hidden="true">✓</div>
+          <h2>Permohonan tersimpan</h2>
+          <p class="bantu" style="margin-top:0">${esc(l.nama)}</p>
+          <div class="no-reg">${esc(res.no)}</div>
+          <div class="langkah">
+            <strong>Selanjutnya:</strong> admin jurusan menyiapkan surat dan memprosesnya di <strong>Srikandi</strong>.
+            Pantau statusnya di <em>Permohonan saya</em>. Setelah berstatus <strong>Selesai</strong>, surat dapat
+            diunduh di aplikasi <strong>Cari Surat Mahasiswa</strong>.
+          </div>
+          <button type="button" class="btn sekunder" id="btn-selesai">Kembali ke daftar permohonan</button>
+        </section>`;
+      document.getElementById('btn-selesai').onclick = muat;
+      return scrollTo(0, 0);
+    }
     const link = `https://wa.me/${encodeURIComponent(res.wa)}?text=${encodeURIComponent(res.pesan)}`;
     $isi.innerHTML = `
       <section class="kartu sukses">
@@ -318,6 +344,94 @@
       </section>`;
     document.getElementById('btn-selesai').onclick = muat;
     scrollTo(0, 0);
+  }
+
+  /* ===================== DRAF SURAT (.docx untuk Srikandi) ===================== */
+  function isianAdmin(d) {
+    const o = {};
+    (d.adminField || []).forEach((f) => { const el = document.getElementById('adm-' + f.id); if (el) o[f.id] = el.value.trim(); });
+    return o;
+  }
+
+  function muatSkrip(src) {
+    return new Promise((ok, gagal) => {
+      if (document.querySelector(`script[src="${src}"]`)) return ok();
+      const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => gagal(new Error('Gagal memuat ' + src));
+      document.head.appendChild(s);
+    });
+  }
+
+  function kalimatProdi(prodi) {
+    const p = String(prodi || '').toLowerCase();
+    if (p.includes('prof')) return 'Prodi Pendidikan Profesi Dietisien Program Pendidikan Profesi';
+    if (p.includes('d3') || p.includes('diploma')) return 'Prodi Gizi Program Diploma Tiga';
+    if (p.includes('d4') || p.includes('sarjana') || p.includes('dietetika')) return 'Prodi Gizi dan Dietetika Program Sarjana Terapan';
+    return prodi || '';
+  }
+  function namaProdi(prodi) {
+    const p = String(prodi || '').toLowerCase();
+    if (p.includes('prof')) return 'Pendidikan Profesi Dietisien';
+    if (p.includes('d3') || p.includes('diploma')) return 'Diploma Tiga Gizi';
+    if (p.includes('d4') || p.includes('sarjana') || p.includes('dietetika')) return 'Sarjana Terapan Gizi dan Dietetika';
+    return prodi || '';
+  }
+  function tglIndo(iso) {
+    const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${Number(m[3])} ${BULAN[Number(m[2]) - 1]} ${m[1]}` : (iso || '');
+  }
+
+  function dataSurat(d, adm) {
+    const i = d.isi || {};
+    const umum = { nama: d.nama, nim: d.nim, prodi: namaProdi(d.prodi), prodi_kalimat: kalimatProdi(d.prodi) };
+    if (d.kode === 'DATA') return Object.assign(umum, {
+      tujuan: i.ditujukan, alamat_tujuan: i.alamat_tujuan,
+      ttl: [i.tempat_lahir, tglIndo(i.tanggal_lahir)].filter(Boolean).join(', '),
+      kelamin: i.kelamin, pekerjaan: i.kelamin === 'Perempuan' ? 'Mahasiswi' : 'Mahasiswa',
+      alamat: i.alamat_mhs, judul: i.judul, data_diminta: i.data_diminta, lokasi: i.lokasi
+    });
+    if (d.kode === 'KMB') return Object.assign(umum, {
+      instansi: i.instansi, tujuan_instansi: i.pimpinan_instansi, alamat_instansi: i.alamat_instansi,
+      tujuan_bkd: i.bkd, alamat_bkd: i.alamat_bkd,
+      no_yudisium: adm.no_yudisium, tgl_yudisium: tglIndo(adm.tgl_yudisium)
+    });
+    return Object.assign(umum, i);
+  }
+
+  async function unduhDraf(d, btn) {
+    const adm = isianAdmin(d);
+    const kurang = (d.adminField || []).find((f) => f.wajib && !adm[f.id]);
+    if (kurang) return pesanForm(`${kurang.label} wajib diisi sebelum membuat draf surat.`, 'adm-' + kurang.id);
+    const label = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '<span class="putar kecil"></span> Menyiapkan surat…';
+    try {
+      await muatSkrip('https://cdn.jsdelivr.net/npm/pizzip@3.2.0/dist/pizzip.min.js');
+      await muatSkrip('https://cdn.jsdelivr.net/npm/docxtemplater@3.69.3/build/docxtemplater.js');
+      const r = await fetch('templates/' + d.surat, { cache: 'no-cache' });
+      if (!r.ok) throw new Error('Template ' + d.surat + ' tidak ditemukan.');
+      const zip = new window.PizZip(await r.arrayBuffer());
+      const doc = new window.docxtemplater(zip, { paragraphLoop: true, linebreaks: true, delimiters: { start: '[[', end: ']]' }, nullGetter: () => '' });
+      doc.render(dataSurat(d, adm));
+      const blob = doc.getZip().generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${d.no} ${d.jenis} - ${d.nama}.docx`.replace(/[\\/:*?"<>|]/g, '-');
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+
+      // Simpan isian admin + tandai Diproses (bila masih Diajukan)
+      const status = d.status === 'Diajukan' ? 'Diproses' : d.status;
+      const catatan = d.catatan || (d.status === 'Diajukan' ? 'Surat sedang diproses di Srikandi.' : '');
+      const res = await api({ aksi: 'ubahStatus', token: sesi.token, no: d.no, status, catatan, admin: adm });
+      if (res.ok) {
+        Object.assign(d, { status: res.status, catatan: res.catatan, diperbarui: res.diperbarui, adminIsi: adm });
+        document.getElementById('s-status').value = res.status;
+        document.getElementById('s-catatan').value = res.catatan;
+      }
+    } catch (e) {
+      pesanForm('Gagal membuat draf: ' + (e.message || e));
+    } finally {
+      btn.disabled = false; btn.innerHTML = label;
+    }
   }
 
   /* ===================== UTILITAS ===================== */

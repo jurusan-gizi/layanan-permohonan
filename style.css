@@ -266,3 +266,6 @@ details summary { cursor: pointer; font-size: 13px; color: var(--abu); margin-to
 .pantau li:hover, .pantau li:focus-visible { border-color: var(--teal); box-shadow: 0 6px 18px rgba(18,48,47,.08); outline: none; }
 .r-nim { font-weight: 600; color: var(--abu); font-size: 12px; }
 a.btn.sekunder { text-decoration: none; box-sizing: border-box; }
+
+.r-wa { grid-column: 2 / 4; justify-self: start; margin-top: 6px; font-size: 13px; font-weight: 700; color: #178a45; background: #dcf5e6; padding: 6px 12px; border-radius: 999px; text-decoration: none; }
+.r-wa:hover { background: #c6eed6; }
