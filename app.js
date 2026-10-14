@@ -46,7 +46,7 @@
     const cocok = P.data.filter((d) =>
       (!F.status || d.status === F.status) && (!F.jenis || d.kode === F.jenis) &&
       (!F.cari || (d.nama + ' ' + d.nim + ' ' + d.no).toLowerCase().includes(F.cari.toLowerCase())));
-    const lingkup = P.staf.lingkup.includes('semua') ? 'Semua prodi' : 'Prodi ' + P.staf.lingkup.map((x) => x.toUpperCase()).join(', ');
+    const lingkup = P.staf.label || (P.staf.lingkup.includes('semua') ? 'Semua prodi' : 'Prodi ' + P.staf.lingkup.map((x) => x.toUpperCase()).join(', '));
     $isi.innerHTML = `
       <section class="kartu profil">
         <div class="avatar" aria-hidden="true">${esc(inisial(P.staf.nama))}</div>
@@ -120,12 +120,24 @@
           <p class="bantu-field">Nomor, tanggal, tanda tangan & nama penandatangan sengaja dikosongkan (diisi Srikandi). Status otomatis menjadi <b>Diproses</b>.</p>` : ''}
         <button type="submit" class="btn utama" id="btn-simpan">Simpan status</button>
         ${d.hp ? `<a class="btn sekunder" href="https://wa.me/${encodeURIComponent(d.hp)}?text=${encodeURIComponent(sapa)}" target="_blank" rel="noopener">💬 Hubungi mahasiswa via WA</a>` : ''}
-        ${d.pesanDirektorat ? `<a class="btn sekunder" href="https://wa.me/${encodeURIComponent(d.waDirektorat)}?text=${encodeURIComponent(d.pesanDirektorat)}" target="_blank" rel="noopener">📤 Teruskan ke admin Direktorat</a>` : ''}
+        ${d.pesanDirektorat ? `<a class="btn wa" id="btn-teruskan" style="margin-top:10px" href="https://wa.me/${encodeURIComponent(d.waDirektorat)}?text=${encodeURIComponent(d.pesanDirektorat)}" target="_blank" rel="noopener">📤 Teruskan ke WA admin Direktorat</a>
+          <p class="bantu-field">Setelah diteruskan, status otomatis menjadi <b>Diproses</b> dan mahasiswa melihat catatannya.</p>` : ''}
         <button type="button" class="btn sekunder" id="btn-kembali">← Kembali ke daftar</button>
       </form>`;
     document.getElementById('btn-kembali').onclick = daftarPantau;
     const btnDocx = document.getElementById('btn-docx');
     if (btnDocx) btnDocx.onclick = () => unduhDraf(d, btnDocx);
+    const btnTeruskan = document.getElementById('btn-teruskan');
+    if (btnTeruskan) btnTeruskan.addEventListener('click', () => {
+      // WA terbuka lewat tautan; pencatatan di server berjalan bersamaan.
+      api({ aksi: 'teruskan', token: sesi.token, no: d.no }).then((res) => {
+        if (!res || !res.ok) return;
+        Object.assign(d, { status: res.status, catatan: res.catatan, diperbarui: res.diperbarui });
+        const sel = document.getElementById('s-status'), cat = document.getElementById('s-catatan');
+        if (sel) sel.value = res.status;
+        if (cat) cat.value = res.catatan;
+      }).catch(() => {});
+    });
     document.getElementById('form-status').addEventListener('submit', async (e) => {
       e.preventDefault();
       const btn = document.getElementById('btn-simpan');
@@ -222,7 +234,6 @@
       <span class="r-info">${esc(r.no)} · ${esc(tglWaktu(r.waktu))}</span>
       ${r.catatan ? `<span class="r-catatan">💬 ${esc(r.catatan)}</span>` : ''}
       ${r.surat && r.status === 'Selesai' ? `<a class="r-wa" href="https://jurusan-gizi.github.io/Kantor-Virtual/">📄 Unduh di Cari Surat</a>` : ''}
-      ${r.wa && r.pesan && (r.status === 'Diajukan' || r.status === 'Diproses') ? `<a class="r-wa" href="https://wa.me/${encodeURIComponent(r.wa)}?text=${encodeURIComponent(r.pesan)}" target="_blank" rel="noopener">📲 Kirim ${r.status === 'Diajukan' ? '' : 'ulang '}ke WA admin</a>` : ''}
     </li>`;
   }
 
@@ -324,7 +335,6 @@
       document.getElementById('btn-selesai').onclick = muat;
       return scrollTo(0, 0);
     }
-    const link = `https://wa.me/${encodeURIComponent(res.wa)}?text=${encodeURIComponent(res.pesan)}`;
     $isi.innerHTML = `
       <section class="kartu sukses">
         <div class="centang" aria-hidden="true">✓</div>
@@ -334,12 +344,10 @@
         <p class="bantu" style="margin-top:6px">Simpan nomor registrasi ini untuk menanyakan perkembangan surat.</p>
 
         <div class="langkah">
-          <strong>Langkah terakhir:</strong> tekan tombol hijau di bawah. WhatsApp akan terbuka dengan pesan yang
-          sudah terisi, lalu tekan <strong>Kirim</strong> agar admin akademik menerima pemberitahuan.
+          <strong>Selanjutnya:</strong> permohonan Anda diperiksa oleh <strong>Kaprodi</strong>, lalu diteruskan ke
+          bagian akademik Direktorat. Pantau statusnya di <em>Permohonan saya</em>. Status berubah menjadi
+          <strong>Diproses</strong> setelah diteruskan.
         </div>
-        <a class="btn wa" href="${link}" target="_blank" rel="noopener">Kirim ke WA Admin Akademik</a>
-
-        <details><summary>Lihat isi pesan</summary><div class="pratinjau">${esc(res.pesan)}</div></details>
         <button type="button" class="btn sekunder" id="btn-selesai">Kembali ke daftar permohonan</button>
       </section>`;
     document.getElementById('btn-selesai').onclick = muat;
