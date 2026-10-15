@@ -269,3 +269,27 @@ a.btn.sekunder { text-decoration: none; box-sizing: border-box; }
 
 .r-wa { grid-column: 2 / 4; justify-self: start; margin-top: 6px; font-size: 13px; font-weight: 700; color: #178a45; background: #dcf5e6; padding: 6px 12px; border-radius: 999px; text-decoration: none; }
 .r-wa:hover { background: #c6eed6; }
+
+/* ---------- Isian berkelompok: instansi tujuan 1–4 ---------- */
+.grup-isian { border: 1.5px solid var(--garis); border-radius: 14px; padding: 4px 14px 14px; margin: 16px 0 0; }
+.grup-isian legend { font-weight: 800; font-size: 13.5px; color: #7c3aed; padding: 0 6px; display: flex; align-items: center; gap: 8px; }
+.grup-isian label:first-of-type { margin-top: 6px; }
+.hapus-grup { font: inherit; font-size: 12px; font-weight: 700; color: var(--merah); background: #fff1ea; border: 0; border-radius: 999px; padding: 2px 9px; cursor: pointer; }
+
+/* ---------- Usulan kolektif ---------- */
+.btn.kolektif { width: 100%; margin-top: 12px; padding: 13px 14px; background: #f3edff; color: #5b21b6; border: 1.5px solid #ddd0fb; font-size: 15px; justify-content: space-between; }
+.btn.kolektif small { font-size: 12px; font-weight: 700; background: #7c3aed; color: #fff; padding: 2px 9px; border-radius: 999px; }
+.btn.kolektif:hover { border-color: #7c3aed; }
+.chip-grup { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.chip { font: inherit; font-size: 13px; font-weight: 700; border: 1.5px solid var(--garis); background: var(--putih); color: var(--abu); border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+.chip b { margin-left: 4px; color: #7c3aed; }
+.chip[aria-pressed="true"] { border-color: #7c3aed; color: #5b21b6; background: #f3edff; }
+.cek-semua { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13.5px; padding: 8px 2px; border-bottom: 1px solid var(--garis); margin: 0; }
+.daftar-cek { list-style: none; margin: 0; padding: 0; }
+.daftar-cek li { border-bottom: 1px solid #eef3f3; }
+.daftar-cek label { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 10px 2px; margin: 0; font-weight: 400; font-size: 14px; cursor: pointer; }
+.daftar-cek .bantu { margin: 0; font-size: 12px; }
+.cek-semua input, .daftar-cek input { width: 18px; height: 18px; accent-color: #7c3aed; }
+.lihat { font: inherit; font-size: 20px; border: 0; background: none; color: var(--abu); cursor: pointer; padding: 0 6px; }
+.aksi-usulan { grid-column: 1 / 4; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.aksi-usulan .btn.kecil { width: auto; margin: 0; padding: 7px 11px; font-size: 13px; }

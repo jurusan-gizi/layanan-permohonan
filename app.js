@@ -56,6 +56,9 @@
         </div>
       </section>
 
+      ${P.jenis.some((j) => j.kode === 'KMB') ? `<button type="button" class="btn kolektif" id="btn-kolektif">📑 Usulan Kolektif Pengembalian
+          <small>${P.data.filter((d) => d.kolektif && !d.noUsulan && d.status !== 'Ditolak').length} belum diusulkan</small></button>` : ''}
+
       <div class="stat-grid" role="group" aria-label="Saring status">
         ${[['', 'Semua'], ...P.status.map((x) => [x, x])].map(([v, t]) => `
           <button class="stat ${v ? 's-' + v.toLowerCase() : 's-semua'}" data-status="${esc(v)}" aria-pressed="${F.status === v}">
@@ -80,6 +83,8 @@
       : '<p class="kartu kosong">Tidak ada permohonan untuk saringan ini.</p>'}`;
 
     $isi.querySelectorAll('[data-status]').forEach((b) => b.onclick = () => { F.status = b.dataset.status; daftarPantau(); });
+    const bk = document.getElementById('btn-kolektif');
+    if (bk) bk.onclick = () => usulanKolektif();
     document.getElementById('f-jenis').onchange = (e) => { F.jenis = e.target.value; daftarPantau(); };
     const cari = document.getElementById('f-cari');
     cari.oninput = () => { F.cari = cari.value; clearTimeout(cari._t); cari._t = setTimeout(() => { daftarPantau(); const c = document.getElementById('f-cari'); c.focus(); c.setSelectionRange(c.value.length, c.value.length); }, 250); };
@@ -118,6 +123,9 @@
         <p id="pesan-form" class="pesan" role="alert" hidden></p>
         ${d.surat ? `<button type="button" class="btn wa" id="btn-docx" style="background:#1d4ed8;margin-top:18px">📄 Unduh draf surat (.docx) untuk Srikandi</button>
           <p class="bantu-field">Nomor, tanggal, tanda tangan & nama penandatangan sengaja dikosongkan (diisi Srikandi). Status otomatis menjadi <b>Diproses</b>.</p>` : ''}
+        ${d.kolektif ? `<p class="langkah" style="margin-top:16px">${d.noUsulan
+            ? `📑 Sudah masuk usulan <b>${esc(d.noUsulan)}</b>. Kelola (unduh ulang, tandai selesai) di menu <b>Usulan Kolektif</b>.`
+            : '📑 Belum diusulkan. Gabungkan dengan mahasiswa lain lewat menu <b>Usulan Kolektif</b> di halaman daftar.'}</p>` : ''}
         <button type="submit" class="btn utama" id="btn-simpan">Simpan status</button>
         ${d.hp ? `<a class="btn sekunder" href="https://wa.me/${encodeURIComponent(d.hp)}?text=${encodeURIComponent(sapa)}" target="_blank" rel="noopener">💬 Hubungi mahasiswa via WA</a>` : ''}
         ${d.pesanDirektorat ? `<a class="btn wa" id="btn-teruskan" style="margin-top:10px" href="https://wa.me/${encodeURIComponent(d.waDirektorat)}?text=${encodeURIComponent(d.pesanDirektorat)}" target="_blank" rel="noopener">📤 Teruskan ke WA admin Direktorat</a>
@@ -255,18 +263,51 @@
       </section>
 
       <form id="form-ajuan" class="kartu" style="margin-top:12px" novalidate>
-        ${l.field.map(htmlField).join('')}
+        ${htmlFields(l.field)}
         <p id="pesan-form" class="pesan" role="alert" hidden></p>
         <button type="submit" class="btn utama" id="btn-kirim">Simpan permohonan</button>
         <button type="button" class="btn sekunder" id="btn-batal">Batal</button>
       </form>`;
     document.getElementById('btn-batal').onclick = beranda;
     document.getElementById('form-ajuan').addEventListener('submit', (e) => { e.preventDefault(); kirim(l); });
+    const btnTambah = document.getElementById('btn-tambah-grup');
+    if (btnTambah) btnTambah.onclick = () => {
+      const g = $isi.querySelector('.grup-isian[hidden]');
+      if (g) { g.hidden = false; g.querySelector('input,textarea').focus(); }
+      btnTambah.hidden = !$isi.querySelector('.grup-isian[hidden]');
+    };
+    $isi.querySelectorAll('[data-hapus-grup]').forEach((b) => b.onclick = () => {
+      const g = b.closest('.grup-isian');
+      g.querySelectorAll('input,textarea').forEach((el) => { el.value = ''; });
+      g.hidden = true;
+      if (btnTambah) btnTambah.hidden = false;
+    });
     $isi.querySelectorAll('input[data-rupiah]').forEach((el) => el.addEventListener('input', () => {
       const angka = el.value.replace(/\D/g, '');
       el.value = angka ? Number(angka).toLocaleString('id-ID') : '';
     }));
     scrollTo(0, 0);
+  }
+
+  /** Isian biasa + isian berkelompok (grup 1..4: instansi tujuan) dengan tombol "Tambah". */
+  function htmlFields(fields) {
+    let html = '', grupAkhir = 0;
+    const grup = {};
+    fields.forEach((f) => { if (f.grup) (grup[f.grup] = grup[f.grup] || []).push(f); });
+    fields.forEach((f) => {
+      if (!f.grup) { html += htmlField(f); return; }
+      if (f.grup === grupAkhir) return;
+      grupAkhir = f.grup;
+      const n = f.grup;
+      html += `<fieldset class="grup-isian" data-grup="${n}" ${n > 1 ? 'hidden' : ''}>
+        <legend>Instansi tujuan ${n}${n > 1 ? ` <button type="button" class="hapus-grup" data-hapus-grup>✕ Hapus</button>` : ''}</legend>
+        ${grup[n].map(htmlField).join('')}</fieldset>`;
+      if (n === Math.max(...Object.keys(grup).map(Number))) {
+        html += `<button type="button" class="btn sekunder" id="btn-tambah-grup" style="margin-top:10px">＋ Tambah instansi tujuan</button>
+          <p class="bantu-field">Isi semua instansi yang harus menerima surat pengembalian (mis. tempat kerja, BKD/BKPSDM, Dinas Kesehatan). Maksimal 4.</p>`;
+      }
+    });
+    return html;
   }
 
   function htmlField(f) {
@@ -276,7 +317,9 @@
     let input;
     switch (f.tipe) {
       case 'pilih':
-        input = `<select id="${id}"><option value="">— Pilih —</option>${f.opsi.map((o) => `<option>${esc(o)}</option>`).join('')}</select>`; break;
+        input = f.opsi.length === 1
+          ? `<select id="${id}"><option selected>${esc(f.opsi[0])}</option></select>`
+          : `<select id="${id}"><option value="">— Pilih —</option>${f.opsi.map((o) => `<option>${esc(o)}</option>`).join('')}</select>`; break;
       case 'panjang':
         input = `<textarea id="${id}" maxlength="1000"${ph}></textarea>`; break;
       case 'tanggal':
@@ -300,6 +343,12 @@
       if (f.wajib && !v) return pesanForm(`${f.label} wajib diisi.`, 'f-' + f.id);
       data[f.id] = f.tipe === 'rupiah' ? v.replace(/\D/g, '') : v;
     }
+    for (let g = 1; g <= 4; g++) {
+      if (!(('instansi_' + g) in data)) continue;
+      if (!!data['instansi_' + g] !== !!data['alamat_' + g]) {
+        return pesanForm(`Lengkapi nama dan alamat instansi tujuan ${g}.`, data['instansi_' + g] ? 'f-alamat_' + g : 'f-instansi_' + g);
+      }
+    }
     const btn = document.getElementById('btn-kirim');
     btn.disabled = true;
     btn.innerHTML = '<span class="putar kecil"></span> Menyimpan…';
@@ -318,6 +367,24 @@
   }
 
   function sukses(l, res) {
+    if (res.kolektif) {
+      $isi.innerHTML = `
+        <section class="kartu sukses">
+          <div class="centang" aria-hidden="true">✓</div>
+          <h2>Permohonan tersimpan</h2>
+          <p class="bantu" style="margin-top:0">${esc(l.nama)}</p>
+          <div class="no-reg">${esc(res.no)}</div>
+          <div class="langkah">
+            <strong>Selanjutnya:</strong> admin akademik jurusan menggabungkan permohonan Anda ke dalam
+            <strong>usulan Ketua Jurusan kepada Direktur</strong>. Direktorat kemudian menerbitkan surat pengembalian
+            (satu surat berisi semua instansi tujuan Anda). Setelah status <strong>Selesai</strong>, surat dapat
+            diunduh di aplikasi <strong>Cari Surat Mahasiswa</strong>.
+          </div>
+          <button type="button" class="btn sekunder" id="btn-selesai">Kembali ke daftar permohonan</button>
+        </section>`;
+      document.getElementById('btn-selesai').onclick = muat;
+      return scrollTo(0, 0);
+    }
     if (res.surat) {
       $isi.innerHTML = `
         <section class="kartu sukses">
@@ -352,6 +419,177 @@
       </section>`;
     document.getElementById('btn-selesai').onclick = muat;
     scrollTo(0, 0);
+  }
+
+  /* ===================== USULAN KOLEKTIF (Pengembalian ke instansi) ===================== */
+  const K = { kelompok: '' };   // kelompok terpilih: 'prof|RPL', 'd4|RPL', ...
+
+  function kelompokProdi(prodi) {
+    const p = String(prodi || '').toLowerCase();
+    return p.includes('prof') ? 'prof' : p.includes('d4') ? 'd4' : p.includes('d3') ? 'd3' : p;
+  }
+  function kunciKelompok(d) { return kelompokProdi(d.prodi) + '|' + ((d.isi && d.isi.jalur) || '-'); }
+  function labelKelompok(k) {
+    const [p, j] = k.split('|');
+    return (p === 'prof' ? 'Profesi Dietisien' : p === 'd4' ? 'Sarjana Terapan' : p.toUpperCase()) + ' · ' + j;
+  }
+
+  function usulanKolektif() {
+    const kmb = P.data.filter((d) => d.kolektif);
+    const belum = kmb.filter((d) => !d.noUsulan && d.status !== 'Ditolak');
+    const kelompok = [...new Set(belum.map(kunciKelompok))].sort();
+    if (!kelompok.includes(K.kelompok)) K.kelompok = kelompok[0] || '';
+    const calon = belum.filter((d) => kunciKelompok(d) === K.kelompok).sort((a, b) => (a.no < b.no ? -1 : 1));
+
+    // Usulan yang sudah dibuat, dikelompokkan per No. Usulan
+    const usulan = {};
+    kmb.filter((d) => d.noUsulan).forEach((d) => (usulan[d.noUsulan] = usulan[d.noUsulan] || []).push(d));
+    const daftarUsulan = Object.keys(usulan).sort().reverse();
+
+    $isi.innerHTML = `
+      <section class="kartu">
+        <h2 style="margin:0 0 4px;font-size:18px">📑 Usulan Kolektif Pengembalian</h2>
+        <p class="bantu" style="margin:0">Pilih mahasiswa, lalu buat <b>satu nota dinas</b> Ketua Jurusan ke Direktur beserta lampiran daftar nama.
+          Satu usulan = satu prodi + satu jalur.</p>
+      </section>
+
+      <h2 class="judul-bagian">Belum diusulkan</h2>
+      ${kelompok.length ? `
+        <div class="chip-grup" role="group" aria-label="Kelompok">
+          ${kelompok.map((k) => `<button type="button" class="chip" data-kel="${esc(k)}" aria-pressed="${k === K.kelompok}">
+            ${esc(labelKelompok(k))} <b>${belum.filter((d) => kunciKelompok(d) === k).length}</b></button>`).join('')}
+        </div>
+        <section class="kartu" style="padding:8px 12px">
+          <label class="cek-semua"><input type="checkbox" id="cek-semua" checked> Pilih semua (${calon.length})</label>
+          <ul class="daftar-cek">
+            ${calon.map((d) => `<li><label>
+              <input type="checkbox" class="cek-mhs" value="${esc(d.no)}" checked>
+              <span><b>${esc(d.nama)}</b> <small>${esc(d.nim)}</small><br>
+              <small class="bantu">${esc(daftarInstansi(d).map((x) => x.nama).join(' · '))}</small></span>
+              <button type="button" class="lihat" data-lihat="${esc(d.no)}" aria-label="Lihat rincian">›</button>
+            </label></li>`).join('')}
+          </ul>
+          <p id="pesan-form" class="pesan" role="alert" hidden></p>
+          <button type="button" class="btn wa" id="btn-usulkan" style="background:#7c3aed;margin-top:12px">📄 Buat Nota Dinas Usulan (.docx)</button>
+          <p class="bantu-field">Mahasiswa terpilih mendapat No. Usulan yang sama dan status otomatis menjadi <b>Diproses</b>.
+            Nomor, tanggal, TTD & nama penandatangan dikosongkan untuk Srikandi.</p>
+        </section>`
+      : '<p class="kartu kosong">Semua permohonan pengembalian sudah diusulkan. 👍</p>'}
+
+      <h2 class="judul-bagian">Usulan yang sudah dibuat</h2>
+      ${daftarUsulan.length ? `<ul class="riwayat">${daftarUsulan.map((no) => {
+        const a = usulan[no], selesai = a.every((d) => d.status === 'Selesai');
+        return `<li>
+          <span class="r-ikon" aria-hidden="true">📑</span>
+          <span class="r-jenis">${esc(no)} <small class="r-nim">${a.length} mahasiswa</small></span>
+          <span class="status s-${selesai ? 'selesai' : 'diproses'}">${selesai ? 'Selesai' : 'Diproses'}</span>
+          <span class="r-info">${esc(labelKelompok(kunciKelompok(a[0])))}<br>${esc(a.map((d) => d.nama).join(', '))}</span>
+          <span class="aksi-usulan">
+            <button type="button" class="btn sekunder kecil" data-unduh="${esc(no)}">📄 Unduh ulang</button>
+            ${selesai ? '' : `<button type="button" class="btn sekunder kecil" data-selesai="${esc(no)}">✓ Tandai surat terbit</button>
+            <button type="button" class="btn teks kecil" data-batal="${esc(no)}">Batalkan</button>`}
+          </span>
+        </li>`;
+      }).join('')}</ul>` : '<p class="kartu kosong">Belum ada usulan.</p>'}
+
+      <button type="button" class="btn sekunder" id="btn-kembali" style="margin-top:16px">← Kembali ke daftar</button>`;
+
+    document.getElementById('btn-kembali').onclick = daftarPantau;
+    $isi.querySelectorAll('[data-kel]').forEach((b) => b.onclick = () => { K.kelompok = b.dataset.kel; usulanKolektif(); });
+    $isi.querySelectorAll('[data-lihat]').forEach((b) => b.onclick = (e) => { e.preventDefault(); detailPantau(b.dataset.lihat); });
+    const semua = document.getElementById('cek-semua');
+    if (semua) semua.onchange = () => $isi.querySelectorAll('.cek-mhs').forEach((c) => { c.checked = semua.checked; });
+    const bu = document.getElementById('btn-usulkan');
+    if (bu) bu.onclick = () => buatUsulan(bu);
+    $isi.querySelectorAll('[data-unduh]').forEach((b) => b.onclick = () => unduhUsulan(usulan[b.dataset.unduh], b.dataset.unduh, b));
+    $isi.querySelectorAll('[data-selesai]').forEach((b) => b.onclick = () => aturUsulan(b.dataset.selesai, 'selesai', b));
+    $isi.querySelectorAll('[data-batal]').forEach((b) => b.onclick = () => aturUsulan(b.dataset.batal, 'batal', b));
+    scrollTo(0, 0);
+  }
+
+  function daftarInstansi(d) {
+    const i = d.isi || {}, out = [];
+    for (let g = 1; g <= 4; g++) if (i['instansi_' + g]) out.push({ nama: i['instansi_' + g], alamat: i['alamat_' + g] || '' });
+    return out;
+  }
+
+  async function buatUsulan(btn) {
+    const nos = [...$isi.querySelectorAll('.cek-mhs:checked')].map((c) => c.value);
+    if (!nos.length) return pesanForm('Pilih minimal satu mahasiswa.');
+    if (!confirm(`Buat nota dinas usulan untuk ${nos.length} mahasiswa?`)) return;
+    const label = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '<span class="putar kecil"></span> Menyiapkan…';
+    try {
+      const res = await api({ aksi: 'usulkan', token: sesi.token, nos });
+      if (!res.ok) return pesanForm(res.pesan || 'Gagal membuat usulan.');
+      const anggota = P.data.filter((d) => nos.includes(d.no));
+      anggota.forEach((d) => Object.assign(d, { noUsulan: res.noUsulan, status: res.status, catatan: res.catatan, diperbarui: res.diperbarui }));
+      await unduhUsulan(anggota, res.noUsulan);
+      usulanKolektif();
+    } catch (e) {
+      pesanForm('Gagal: ' + (e.message || e));
+    } finally {
+      if (document.body.contains(btn)) { btn.disabled = false; btn.innerHTML = label; }
+    }
+  }
+
+  async function unduhUsulan(anggota, noUsulan, btn) {
+    const label = btn && btn.innerHTML;
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="putar kecil"></span>'; }
+    try {
+      const urut = anggota.slice().sort((a, b) => (a.no < b.no ? -1 : 1));
+      const d0 = urut[0];
+      const jalur = (d0.isi && d0.isi.jalur) || '';
+      const nomor = (xs, f) => xs.length > 1 ? xs.map((x, i) => `${i + 1}. ${f(x)}`).join('\n') : xs.map(f).join('');
+      const data = {
+        prodi_kalimat: 'Prodi ' + namaProdi(d0.prodi), PRODI: namaProdi(d0.prodi).toUpperCase(),
+        jalur, JALUR: jalur.toUpperCase(),
+        mhs: urut.map((d, i) => {
+          const inst = daftarInstansi(d);
+          return { no: i + 1, nama: d.nama, nim: d.nim, instansi: nomor(inst, (x) => x.nama), alamat: nomor(inst, (x) => x.alamat) };
+        })
+      };
+      await renderDocx('usulan-pengembalian.docx', data, `${noUsulan} Usulan Pengembalian ${labelKelompok(kunciKelompok(d0))}.docx`);
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = label; }
+    }
+  }
+
+  async function aturUsulan(noUsulan, aksiUsulan, btn) {
+    const tanya = aksiUsulan === 'selesai'
+      ? `Tandai semua mahasiswa di ${noUsulan} SELESAI (surat pengembalian sudah terbit & diunggah ke Drive)?`
+      : `Batalkan ${noUsulan}? Mahasiswanya kembali ke daftar "Belum diusulkan".`;
+    if (!confirm(tanya)) return;
+    btn.disabled = true;
+    try {
+      const res = await api({ aksi: 'aturUsulan', token: sesi.token, noUsulan, aksiUsulan });
+      if (!res.ok) { alert(res.pesan || 'Gagal.'); return; }
+      P.data.filter((d) => d.noUsulan === noUsulan).forEach((d) => Object.assign(d, {
+        noUsulan: res.ubah['No. Usulan'] !== undefined ? res.ubah['No. Usulan'] : d.noUsulan,
+        status: res.ubah['Status'], catatan: res.ubah['Catatan Admin'], diperbarui: res.ubah['Diperbarui']
+      }));
+      usulanKolektif();
+    } catch (e) {
+      alert(navigator.onLine ? 'Server tidak merespons. Coba lagi.' : 'Tidak ada koneksi internet.');
+    } finally {
+      if (document.body.contains(btn)) btn.disabled = false;
+    }
+  }
+
+  async function renderDocx(templat, data, namaFile) {
+    await muatSkrip('https://cdn.jsdelivr.net/npm/pizzip@3.2.0/dist/pizzip.min.js');
+    await muatSkrip('https://cdn.jsdelivr.net/npm/docxtemplater@3.69.3/build/docxtemplater.js');
+    const r = await fetch('templates/' + templat, { cache: 'no-cache' });
+    if (!r.ok) throw new Error('Template ' + templat + ' tidak ditemukan.');
+    const zip = new window.PizZip(await r.arrayBuffer());
+    const doc = new window.docxtemplater(zip, { paragraphLoop: true, linebreaks: true, delimiters: { start: '[[', end: ']]' }, nullGetter: () => '' });
+    doc.render(data);
+    const blob = doc.getZip().generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = namaFile.replace(/[\\/:*?"<>|]/g, '-');
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }
 
   /* ===================== DRAF SURAT (.docx untuk Srikandi) ===================== */
