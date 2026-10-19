@@ -56,8 +56,8 @@
         </div>
       </section>
 
-      ${P.jenis.some((j) => j.kode === 'KMB') ? `<button type="button" class="btn kolektif" id="btn-kolektif">📑 Usulan Kolektif Pengembalian
-          <small>${P.data.filter((d) => d.kolektif && !d.noUsulan && d.status !== 'Ditolak').length} belum diusulkan</small></button>` : ''}
+      ${P.jenis.some((j) => j.kode === 'KMB' || j.kode === 'BSW') ? `<button type="button" class="btn kolektif" id="btn-kolektif">📑 Usulan Kolektif ke Direktur
+          <small>${P.data.filter(belumDiusulkan).length} menunggu</small></button>` : ''}
 
       <div class="stat-grid" role="group" aria-label="Saring status">
         ${[['', 'Semua'], ...P.status.map((x) => [x, x])].map(([v, t]) => `
@@ -121,11 +121,13 @@
           <label for="adm-${esc(f.id)}">${esc(f.label)}${f.wajib ? '<span class="wajib">*</span>' : ''}</label>
           <input id="adm-${esc(f.id)}" ${f.tipe === 'tanggal' ? 'type="date"' : ''} value="${esc(d.adminIsi[f.id] || '')}">`).join('')}
         <p id="pesan-form" class="pesan" role="alert" hidden></p>
-        ${d.surat ? `<button type="button" class="btn wa" id="btn-docx" style="background:#1d4ed8;margin-top:18px">📄 Unduh draf surat (.docx) untuk Srikandi</button>
+        ${d.surat && !d.noUsulan ? `<button type="button" class="btn wa" id="btn-docx" style="background:#1d4ed8;margin-top:18px">📄 Unduh draf surat (.docx) untuk Srikandi</button>
           <p class="bantu-field">Nomor, tanggal, tanda tangan & nama penandatangan sengaja dikosongkan (diisi Srikandi). Status otomatis menjadi <b>Diproses</b>.</p>` : ''}
         ${d.kolektif ? `<p class="langkah" style="margin-top:16px">${d.noUsulan
             ? `📑 Sudah masuk usulan <b>${esc(d.noUsulan)}</b>. Kelola (unduh ulang, tandai selesai) di menu <b>Usulan Kolektif</b>.`
-            : '📑 Belum diusulkan. Gabungkan dengan mahasiswa lain lewat menu <b>Usulan Kolektif</b> di halaman daftar.'}</p>` : ''}
+            : d.kode === 'BSW'
+              ? '📑 Pilih salah satu: <b>surat satuan</b> (tombol biru di atas, Surat Keterangan Ketua Jurusan) atau <b>kolektif</b> lewat menu <b>Usulan Kolektif</b> (Nota Dinas ke Direktur).'
+              : '📑 Belum diusulkan. Gabungkan dengan mahasiswa lain lewat menu <b>Usulan Kolektif</b> di halaman daftar.'}</p>` : ''}
         <button type="submit" class="btn utama" id="btn-simpan">Simpan status</button>
         ${d.hp ? `<a class="btn sekunder" href="https://wa.me/${encodeURIComponent(d.hp)}?text=${encodeURIComponent(sapa)}" target="_blank" rel="noopener">💬 Hubungi mahasiswa via WA</a>` : ''}
         ${d.pesanDirektorat ? `<a class="btn wa" id="btn-teruskan" style="margin-top:10px" href="https://wa.me/${encodeURIComponent(d.waDirektorat)}?text=${encodeURIComponent(d.pesanDirektorat)}" target="_blank" rel="noopener">📤 Teruskan ke WA admin Direktorat</a>
@@ -367,7 +369,7 @@
   }
 
   function sukses(l, res) {
-    if (res.kolektif) {
+    if (res.kolektif && l.kode === 'KMB') {
       $isi.innerHTML = `
         <section class="kartu sukses">
           <div class="centang" aria-hidden="true">✓</div>
@@ -428,15 +430,26 @@
     const p = String(prodi || '').toLowerCase();
     return p.includes('prof') ? 'prof' : p.includes('d4') ? 'd4' : p.includes('d3') ? 'd3' : p;
   }
-  function kunciKelompok(d) { return kelompokProdi(d.prodi) + '|' + ((d.isi && d.isi.jalur) || '-'); }
+  function kunciKelompok(d) {
+    if (d.kode === 'BSW') return 'BSW';
+    return 'KMB|' + kelompokProdi(d.prodi) + '|' + ((d.isi && d.isi.jalur) || '-');
+  }
   function labelKelompok(k) {
-    const [p, j] = k.split('|');
-    return (p === 'prof' ? 'Profesi Dietisien' : p === 'd4' ? 'Sarjana Terapan' : p.toUpperCase()) + ' · ' + j;
+    if (k === 'BSW') return '🎓 Ket. Tidak Menerima Beasiswa';
+    const [, p, j] = k.split('|');
+    return '↩️ Pengembalian · ' + (p === 'prof' ? 'Profesi Dietisien' : p === 'd4' ? 'Sarjana Terapan' : String(p).toUpperCase()) + ' · ' + j;
+  }
+  function belumDiusulkan(d) { return d.kolektif && !d.noUsulan && d.status === 'Diajukan'; }
+  /** Nama beasiswa terbanyak di antara anggota (untuk judul nota kolektif). */
+  function beasiswaUmum(list) {
+    const n = {};
+    list.forEach((d) => { const b = String((d.isi && d.isi.beasiswa) || '').trim(); if (b) n[b] = (n[b] || 0) + 1; });
+    return Object.keys(n).sort((a, b) => n[b] - n[a])[0] || '';
   }
 
   function usulanKolektif() {
     const kmb = P.data.filter((d) => d.kolektif);
-    const belum = kmb.filter((d) => !d.noUsulan && d.status !== 'Ditolak');
+    const belum = kmb.filter(belumDiusulkan);
     const kelompok = [...new Set(belum.map(kunciKelompok))].sort();
     if (!kelompok.includes(K.kelompok)) K.kelompok = kelompok[0] || '';
     const calon = belum.filter((d) => kunciKelompok(d) === K.kelompok).sort((a, b) => (a.no < b.no ? -1 : 1));
@@ -448,9 +461,9 @@
 
     $isi.innerHTML = `
       <section class="kartu">
-        <h2 style="margin:0 0 4px;font-size:18px">📑 Usulan Kolektif Pengembalian</h2>
+        <h2 style="margin:0 0 4px;font-size:18px">📑 Usulan Kolektif ke Direktur</h2>
         <p class="bantu" style="margin:0">Pilih mahasiswa, lalu buat <b>satu nota dinas</b> Ketua Jurusan ke Direktur beserta lampiran daftar nama.
-          Satu usulan = satu prodi + satu jalur.</p>
+          Pengembalian: satu usulan = satu prodi + satu jalur. Beasiswa: satu usulan = satu program beasiswa.</p>
       </section>
 
       <h2 class="judul-bagian">Belum diusulkan</h2>
@@ -465,16 +478,22 @@
             ${calon.map((d) => `<li><label>
               <input type="checkbox" class="cek-mhs" value="${esc(d.no)}" checked>
               <span><b>${esc(d.nama)}</b> <small>${esc(d.nim)}</small><br>
-              <small class="bantu">${esc(daftarInstansi(d).map((x) => x.nama).join(' · '))}</small></span>
+              <small class="bantu">${esc(d.kode === 'BSW' ? [d.prodi, (d.isi && d.isi.beasiswa) || ''].filter(Boolean).join(' · ') : daftarInstansi(d).map((x) => x.nama).join(' · '))}</small></span>
               <button type="button" class="lihat" data-lihat="${esc(d.no)}" aria-label="Lihat rincian">›</button>
             </label></li>`).join('')}
           </ul>
+          ${K.kelompok === 'BSW' ? `
+            <label for="u-beasiswa">Nama program beasiswa (tertulis di nota)</label>
+            <input id="u-beasiswa" value="${esc(beasiswaUmum(calon))}" placeholder="mis. Program Beasiswa Pemerintah Provinsi Sulawesi Selatan">
+            <p class="bantu-field">Centang hanya mahasiswa yang mendaftar program yang sama.</p>
+            <label for="u-tahun">Tahun</label>
+            <input id="u-tahun" inputmode="numeric" maxlength="4" value="${new Date().getFullYear()}">` : ''}
           <p id="pesan-form" class="pesan" role="alert" hidden></p>
           <button type="button" class="btn wa" id="btn-usulkan" style="background:#7c3aed;margin-top:12px">📄 Buat Nota Dinas Usulan (.docx)</button>
           <p class="bantu-field">Mahasiswa terpilih mendapat No. Usulan yang sama dan status otomatis menjadi <b>Diproses</b>.
             Nomor, tanggal, TTD & nama penandatangan dikosongkan untuk Srikandi.</p>
         </section>`
-      : '<p class="kartu kosong">Semua permohonan pengembalian sudah diusulkan. 👍</p>'}
+      : '<p class="kartu kosong">Tidak ada permohonan yang menunggu diusulkan. 👍</p>'}
 
       <h2 class="judul-bagian">Usulan yang sudah dibuat</h2>
       ${daftarUsulan.length ? `<ul class="riwayat">${daftarUsulan.map((no) => {
@@ -516,6 +535,13 @@
   async function buatUsulan(btn) {
     const nos = [...$isi.querySelectorAll('.cek-mhs:checked')].map((c) => c.value);
     if (!nos.length) return pesanForm('Pilih minimal satu mahasiswa.');
+    const opsi = {};
+    const ub = document.getElementById('u-beasiswa');
+    if (ub) {
+      opsi.beasiswa = ub.value.trim(); opsi.tahun = document.getElementById('u-tahun').value.trim();
+      if (!opsi.beasiswa) return pesanForm('Isi nama program beasiswa.', 'u-beasiswa');
+      if (!/^\d{4}$/.test(opsi.tahun)) return pesanForm('Tahun tidak valid.', 'u-tahun');
+    }
     if (!confirm(`Buat nota dinas usulan untuk ${nos.length} mahasiswa?`)) return;
     const label = btn.innerHTML;
     btn.disabled = true; btn.innerHTML = '<span class="putar kecil"></span> Menyiapkan…';
@@ -524,7 +550,7 @@
       if (!res.ok) return pesanForm(res.pesan || 'Gagal membuat usulan.');
       const anggota = P.data.filter((d) => nos.includes(d.no));
       anggota.forEach((d) => Object.assign(d, { noUsulan: res.noUsulan, status: res.status, catatan: res.catatan, diperbarui: res.diperbarui }));
-      await unduhUsulan(anggota, res.noUsulan);
+      await unduhUsulan(anggota, res.noUsulan, null, opsi);
       usulanKolektif();
     } catch (e) {
       pesanForm('Gagal: ' + (e.message || e));
@@ -533,12 +559,26 @@
     }
   }
 
-  async function unduhUsulan(anggota, noUsulan, btn) {
+  async function unduhUsulan(anggota, noUsulan, btn, opsi) {
     const label = btn && btn.innerHTML;
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="putar kecil"></span>'; }
     try {
       const urut = anggota.slice().sort((a, b) => (a.no < b.no ? -1 : 1));
       const d0 = urut[0];
+      if (d0.kode === 'BSW') {
+        opsi = opsi || {};
+        const beasiswa = opsi.beasiswa || beasiswaUmum(urut);
+        const tahun = opsi.tahun || ('20' + String(noUsulan).replace(/^USUL-(\d\d).*/, '$1'));
+        const dataB = {
+          beasiswa, BEASISWA: beasiswa.toUpperCase(), tahun,
+          mhs: urut.map((d, i) => ({
+            no: i + 1, nama: d.nama, nim: d.nim, prodi: prodiPendek(d.prodi), semester: romawi((d.isi || {}).semester),
+            ttl: [(d.isi || {}).tempat_lahir, tglIndo((d.isi || {}).tanggal_lahir)].filter(Boolean).join(', ')
+          }))
+        };
+        await renderDocx('usulan-beasiswa.docx', dataB, `${noUsulan} Usulan Beasiswa - ${beasiswa}.docx`.slice(0, 120));
+        return;
+      }
       const jalur = (d0.isi && d0.isi.jalur) || '';
       const nomor = (xs, f) => xs.length > 1 ? xs.map((x, i) => `${i + 1}. ${f(x)}`).join('\n') : xs.map(f).join('');
       const data = {
@@ -557,7 +597,7 @@
 
   async function aturUsulan(noUsulan, aksiUsulan, btn) {
     const tanya = aksiUsulan === 'selesai'
-      ? `Tandai semua mahasiswa di ${noUsulan} SELESAI (surat pengembalian sudah terbit & diunggah ke Drive)?`
+      ? `Tandai semua mahasiswa di ${noUsulan} SELESAI (surat dari Direktorat sudah terbit & diunggah ke Drive)?`
       : `Batalkan ${noUsulan}? Mahasiswanya kembali ke daftar "Belum diusulkan".`;
     if (!confirm(tanya)) return;
     btn.disabled = true;
@@ -614,6 +654,14 @@
     if (p.includes('d4') || p.includes('sarjana') || p.includes('dietetika')) return 'Prodi Gizi dan Dietetika Program Sarjana Terapan';
     return prodi || '';
   }
+  // Akreditasi untuk Surat Keterangan Tidak Menerima Beasiswa
+  const AKREDITASI = { pt: 'Politeknik Kesehatan Kemenkes Makassar / B', d3: 'Unggul', d4: 'Unggul', prof: 'Baik Sekali' };
+  function angkatanDariNim(nim) { const m = String(nim || '').match(/^PO\d{6}(\d\d)/i); return m ? '20' + m[1] : ''; }
+  function romawi(n) { return ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'][Number(n)] || String(n || ''); }
+  function prodiPendek(prodi) {
+    const p = kelompokProdi(prodi);
+    return p === 'prof' ? 'Profesi Dietisien' : p === 'd4' ? 'Gizi dan Dietetika' : p === 'd3' ? 'Gizi' : String(prodi || '');
+  }
   function namaProdi(prodi) {
     const p = String(prodi || '').toLowerCase();
     if (p.includes('prof')) return 'Pendidikan Profesi Dietisien';
@@ -635,6 +683,18 @@
       kelamin: i.kelamin, pekerjaan: i.kelamin === 'Perempuan' ? 'Mahasiswi' : 'Mahasiswa',
       alamat: i.alamat_mhs, judul: i.judul, data_diminta: i.data_diminta, lokasi: i.lokasi
     });
+    if (d.kode === 'BSW') {
+      const kp = kelompokProdi(d.prodi);
+      return Object.assign(umum, {
+        ttl: [i.tempat_lahir, tglIndo(i.tanggal_lahir)].filter(Boolean).join(', '),
+        agama: i.agama, nik: String(i.nik || '').replace(/^'/, ''),
+        pt: AKREDITASI.pt,
+        program_pendidikan: kp === 'prof' ? 'Program Pendidikan Profesi' : 'Program Pendidikan Tinggi Vokasi',
+        prodi_akreditasi: kalimatProdi(d.prodi) + '/' + (AKREDITASI[kp] || '-'),
+        angkatan: String(d.angkatan || '').replace(/^'/, '') || angkatanDariNim(d.nim),
+        ipk: i.ipk || '-', alamat: i.alamat_ktp, hp: i.no_hp
+      });
+    }
     if (d.kode === 'KMB') return Object.assign(umum, {
       instansi: i.instansi, tujuan_instansi: i.pimpinan_instansi, alamat_instansi: i.alamat_instansi,
       tujuan_bkd: i.bkd, alamat_bkd: i.alamat_bkd,

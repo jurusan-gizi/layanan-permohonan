@@ -293,3 +293,4 @@ a.btn.sekunder { text-decoration: none; box-sizing: border-box; }
 .lihat { font: inherit; font-size: 20px; border: 0; background: none; color: var(--abu); cursor: pointer; padding: 0 6px; }
 .aksi-usulan { grid-column: 1 / 4; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .aksi-usulan .btn.kecil { width: auto; margin: 0; padding: 7px 11px; font-size: 13px; }
+section.kartu > label { display: block; font-size: 13px; font-weight: 700; margin: 14px 0 6px; }
