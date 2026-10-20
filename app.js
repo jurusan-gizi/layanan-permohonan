@@ -121,12 +121,12 @@
           <label for="adm-${esc(f.id)}">${esc(f.label)}${f.wajib ? '<span class="wajib">*</span>' : ''}</label>
           <input id="adm-${esc(f.id)}" ${f.tipe === 'tanggal' ? 'type="date"' : ''} value="${esc(d.adminIsi[f.id] || '')}">`).join('')}
         <p id="pesan-form" class="pesan" role="alert" hidden></p>
-        ${d.surat && !d.noUsulan ? `<button type="button" class="btn wa" id="btn-docx" style="background:#1d4ed8;margin-top:18px">📄 Unduh draf surat (.docx) untuk Srikandi</button>
+        ${d.surat && !d.noUsulan ? `<button type="button" class="btn wa" id="btn-docx" style="background:#1d4ed8;margin-top:18px">📄 ${d.kode === 'BSW' ? 'Unduh Nota Dinas usulan perorangan (.docx)' : 'Unduh draf surat (.docx) untuk Srikandi'}</button>
           <p class="bantu-field">Nomor, tanggal, tanda tangan & nama penandatangan sengaja dikosongkan (diisi Srikandi). Status otomatis menjadi <b>Diproses</b>.</p>` : ''}
         ${d.kolektif ? `<p class="langkah" style="margin-top:16px">${d.noUsulan
             ? `📑 Sudah masuk usulan <b>${esc(d.noUsulan)}</b>. Kelola (unduh ulang, tandai selesai) di menu <b>Usulan Kolektif</b>.`
             : d.kode === 'BSW'
-              ? '📑 Pilih salah satu: <b>surat satuan</b> (tombol biru di atas, Surat Keterangan Ketua Jurusan) atau <b>kolektif</b> lewat menu <b>Usulan Kolektif</b> (Nota Dinas ke Direktur).'
+              ? '📑 Pilih salah satu: <b>usulan perorangan</b> (tombol biru di atas, nota dinas ke Direktur untuk mahasiswa ini saja) atau <b>kolektif</b> bersama mahasiswa lain lewat menu <b>Usulan Kolektif ke Direktur</b>.'
               : '📑 Belum diusulkan. Gabungkan dengan mahasiswa lain lewat menu <b>Usulan Kolektif</b> di halaman daftar.'}</p>` : ''}
         <button type="submit" class="btn utama" id="btn-simpan">Simpan status</button>
         ${d.hp ? `<a class="btn sekunder" href="https://wa.me/${encodeURIComponent(d.hp)}?text=${encodeURIComponent(sapa)}" target="_blank" rel="noopener">💬 Hubungi mahasiswa via WA</a>` : ''}
@@ -569,13 +569,7 @@
         opsi = opsi || {};
         const beasiswa = opsi.beasiswa || beasiswaUmum(urut);
         const tahun = opsi.tahun || ('20' + String(noUsulan).replace(/^USUL-(\d\d).*/, '$1'));
-        const dataB = {
-          beasiswa, BEASISWA: beasiswa.toUpperCase(), tahun,
-          mhs: urut.map((d, i) => ({
-            no: i + 1, nama: d.nama, nim: d.nim, prodi: prodiPendek(d.prodi), semester: romawi((d.isi || {}).semester),
-            ttl: [(d.isi || {}).tempat_lahir, tglIndo((d.isi || {}).tanggal_lahir)].filter(Boolean).join(', ')
-          }))
-        };
+        const dataB = { beasiswa, BEASISWA: beasiswa.toUpperCase(), tahun, mhs: urut.map(barisBeasiswa) };
         await renderDocx('usulan-beasiswa.docx', dataB, `${noUsulan} Usulan Beasiswa - ${beasiswa}.docx`.slice(0, 120));
         return;
       }
@@ -658,6 +652,11 @@
   const AKREDITASI = { pt: 'Politeknik Kesehatan Kemenkes Makassar / B', d3: 'Unggul', d4: 'Unggul', prof: 'Baik Sekali' };
   function angkatanDariNim(nim) { const m = String(nim || '').match(/^PO\d{6}(\d\d)/i); return m ? '20' + m[1] : ''; }
   function romawi(n) { return ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'][Number(n)] || String(n || ''); }
+  function barisBeasiswa(d, i) {
+    const x = d.isi || {};
+    return { no: i + 1, nama: d.nama, nim: d.nim, prodi: prodiPendek(d.prodi), semester: romawi(x.semester),
+      ttl: [x.tempat_lahir, tglIndo(x.tanggal_lahir)].filter(Boolean).join(', ') };
+  }
   function prodiPendek(prodi) {
     const p = kelompokProdi(prodi);
     return p === 'prof' ? 'Profesi Dietisien' : p === 'd4' ? 'Gizi dan Dietetika' : p === 'd3' ? 'Gizi' : String(prodi || '');
@@ -684,16 +683,9 @@
       alamat: i.alamat_mhs, judul: i.judul, data_diminta: i.data_diminta, lokasi: i.lokasi
     });
     if (d.kode === 'BSW') {
-      const kp = kelompokProdi(d.prodi);
-      return Object.assign(umum, {
-        ttl: [i.tempat_lahir, tglIndo(i.tanggal_lahir)].filter(Boolean).join(', '),
-        agama: i.agama, nik: String(i.nik || '').replace(/^'/, ''),
-        pt: AKREDITASI.pt,
-        program_pendidikan: kp === 'prof' ? 'Program Pendidikan Profesi' : 'Program Pendidikan Tinggi Vokasi',
-        prodi_akreditasi: kalimatProdi(d.prodi) + '/' + (AKREDITASI[kp] || '-'),
-        angkatan: String(d.angkatan || '').replace(/^'/, '') || angkatanDariNim(d.nim),
-        ipk: i.ipk || '-', alamat: i.alamat_ktp, hp: i.no_hp
-      });
+      // Usulan PERORANGAN ke Direktur: nota dinas yang sama dengan kolektif, berisi 1 mahasiswa
+      const beasiswa = String(i.beasiswa || '').trim();
+      return { beasiswa, BEASISWA: beasiswa.toUpperCase(), tahun: String(new Date().getFullYear()), mhs: [barisBeasiswa(d, 0)] };
     }
     if (d.kode === 'KMB') return Object.assign(umum, {
       instansi: i.instansi, tujuan_instansi: i.pimpinan_instansi, alamat_instansi: i.alamat_instansi,
