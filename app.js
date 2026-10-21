@@ -34,7 +34,10 @@
         return tampilPesan(esc(res.pesan || 'Gagal memuat data.'));
       }
       P = res;
+      P.komplainSaya = P.komplainSaya || [];
       if (!P.data.some((d) => d.status === 'Diajukan')) F.status = '';
+      // Dosen tanpa wewenang pemantauan: langsung ke kotak masuk Komplain Nilai
+      if (!P.jenis.length) return kotakDosen();
       daftarPantau();
     } catch (e) {
       tampilPesan(navigator.onLine ? 'Server tidak merespons. Coba muat ulang halaman sebentar lagi.' : 'Tidak ada koneksi internet.');
@@ -59,9 +62,11 @@
       ${P.jenis.some((j) => j.kode === 'KMB' || j.kode === 'BSW') ? `<button type="button" class="btn kolektif" id="btn-kolektif">📑 Usulan Kolektif ke Direktur
           <small>${P.data.filter(belumDiusulkan).length} menunggu</small></button>` : ''}
 
-      <div class="stat-grid" role="group" aria-label="Saring status">
-        ${[['', 'Semua'], ...P.status.map((x) => [x, x])].map(([v, t]) => `
-          <button class="stat ${v ? 's-' + v.toLowerCase() : 's-semua'}" data-status="${esc(v)}" aria-pressed="${F.status === v}">
+      ${tombolKotakDosen()}
+
+      <div class="stat-grid${P.status.length > 4 ? ' banyak' : ''}" role="group" aria-label="Saring status">
+        ${[['', 'Semua'], ...P.status.map((x) => [x, LABEL_PENDEK[x] || x])].map(([v, t]) => `
+          <button class="stat ${v ? kelasStatus(v) : 's-semua'}" data-status="${esc(v)}" aria-pressed="${F.status === v}">
             <b>${hit(v)}</b><span>${esc(t)}</span></button>`).join('')}
       </div>
 
@@ -77,12 +82,14 @@
         <li data-no="${esc(d.no)}" tabindex="0" role="button">
           <span class="r-ikon" aria-hidden="true">${esc(d.ikon)}</span>
           <span class="r-jenis">${esc(d.nama)} <small class="r-nim">${esc(d.nim)}</small></span>
-          <span class="status s-${esc(d.status.toLowerCase())}">${esc(d.status)}</span>
-          <span class="r-info">${esc(d.jenis)} · ${esc(d.prodi)}${d.kelas ? ' ' + esc(d.kelas) : ''}<br>${esc(d.no)} · ${esc(tglWaktu(d.waktu))}</span>
+          <span class="status ${kelasStatus(d.status)}">${esc(d.status)}</span>
+          <span class="r-info">${esc(d.jenis)} · ${esc(d.prodi)}${d.kelas ? ' ' + esc(d.kelas) : ''}${d.komplain && d.isi ? '<br>' + esc(d.isi.mata_kuliah || '') + (d.batas.startsWith('LEWAT') ? ' · <b class="merah">⚠ lewat 3×24 jam</b>' : '') : ''}<br>${esc(d.no)} · ${esc(tglWaktu(d.waktu))}</span>
         </li>`).join('')}</ul>`
       : '<p class="kartu kosong">Tidak ada permohonan untuk saringan ini.</p>'}`;
 
     $isi.querySelectorAll('[data-status]').forEach((b) => b.onclick = () => { F.status = b.dataset.status; daftarPantau(); });
+    const bkd = document.getElementById('btn-kotak-dosen');
+    if (bkd) bkd.onclick = kotakDosen;
     const bk = document.getElementById('btn-kolektif');
     if (bk) bk.onclick = () => usulanKolektif();
     document.getElementById('f-jenis').onchange = (e) => { F.jenis = e.target.value; daftarPantau(); };
@@ -107,13 +114,16 @@
           <dt>Nama</dt><dd>${esc(d.nama)}</dd>
           <dt>NIM</dt><dd>${esc(d.nim)}</dd>
           <dt>Prodi</dt><dd>${esc([d.prodi, d.kelas].filter(Boolean).join(' – '))}</dd>
-          ${d.rincian.map((r) => `<dt>${esc(r.label)}</dt><dd>${esc(r.nilai)}</dd>`).join('')}
+          ${d.rincian.map((r) => `<dt>${esc(r.label)}</dt><dd>${/^https?:\/\//.test(r.nilai) ? `<a href="${esc(r.nilai)}" target="_blank" rel="noopener">Buka tautan ↗</a>` : esc(r.nilai)}</dd>`).join('')}
+          ${d.komplain && d.batas ? `<dt>Batas 3×24 jam</dt><dd>${d.batas.startsWith('LEWAT') ? `<b class="merah">⚠ ${esc(d.batas)}</b>` : '✓ ' + esc(d.batas)}</dd>` : ''}
         </dl>
       </section>
 
       <form id="form-status" class="kartu" style="margin-top:12px" novalidate>
+        ${d.komplain ? htmlKomplainKaprodi(d) : ''}
+        ${d.komplain ? '<h3 class="sub-judul">3 · Keputusan Kaprodi untuk mahasiswa</h3>' : ''}
         <label for="s-status">Status</label>
-        <select id="s-status">${P.status.map((x) => `<option ${x === d.status ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
+        <select id="s-status">${(d.statusOpsi || P.status).map((x) => `<option ${x === d.status ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
         <label for="s-catatan">Catatan untuk mahasiswa</label>
         <textarea id="s-catatan" maxlength="500" placeholder="mis. Sudah diteruskan ke bagian akademik Direktorat 15/10">${esc(d.catatan)}</textarea>
         ${d.diperbarui ? `<p class="bantu-field">Terakhir diperbarui: ${esc(d.diperbarui)}</p>` : ''}
@@ -135,6 +145,7 @@
         <button type="button" class="btn sekunder" id="btn-kembali">← Kembali ke daftar</button>
       </form>`;
     document.getElementById('btn-kembali').onclick = daftarPantau;
+    if (d.komplain) pasangKomplainKaprodi(d);
     const btnDocx = document.getElementById('btn-docx');
     if (btnDocx) btnDocx.onclick = () => unduhDraf(d, btnDocx);
     const btnTeruskan = document.getElementById('btn-teruskan');
@@ -236,7 +247,7 @@
   }
 
   function itemRiwayat(r) {
-    const kelas = 's-' + String(r.status).toLowerCase();
+    const kelas = kelasStatus(r.status);
     return `<li>
       <span class="r-ikon" aria-hidden="true">${esc(r.ikon)}</span>
       <span class="r-jenis">${esc(r.jenis)}</span>
@@ -369,6 +380,24 @@
   }
 
   function sukses(l, res) {
+    if (res.komplain) {
+      $isi.innerHTML = `
+        <section class="kartu sukses">
+          <div class="centang" aria-hidden="true">✓</div>
+          <h2>Komplain tersimpan</h2>
+          <p class="bantu" style="margin-top:0">${esc(l.nama)}</p>
+          <div class="no-reg">${esc(res.no)}</div>
+          ${res.lewat ? `<p class="pesan" style="text-align:left">⚠ Komplain diajukan melewati batas 3×24 jam setelah nilai diumumkan (${esc(res.batas)}). Kaprodi akan menilai apakah komplain tetap diproses.</p>` : ''}
+          <div class="langkah">
+            <strong>Selanjutnya:</strong> komplain diperiksa <strong>Kaprodi</strong>, lalu dimintakan tanggapan
+            <strong>dosen pengampu</strong>. Keputusan akhir disampaikan Kaprodi dan dapat dilihat di
+            <em>Permohonan saya</em>.
+          </div>
+          <button type="button" class="btn sekunder" id="btn-selesai">Kembali ke daftar permohonan</button>
+        </section>`;
+      document.getElementById('btn-selesai').onclick = muat;
+      return scrollTo(0, 0);
+    }
     if (res.kolektif && l.kode === 'KMB') {
       $isi.innerHTML = `
         <section class="kartu sukses">
@@ -420,6 +449,209 @@
         <button type="button" class="btn sekunder" id="btn-selesai">Kembali ke daftar permohonan</button>
       </section>`;
     document.getElementById('btn-selesai').onclick = muat;
+    scrollTo(0, 0);
+  }
+
+  /* ===================== KOMPLAIN NILAI ===================== */
+  const LABEL_PENDEK = { 'Dikirim ke Dosen': 'Ke Dosen', 'Ditanggapi Dosen': 'Ditanggapi' };
+  function kelasStatus(s) { return 's-' + String(s || '').toLowerCase().replace(/\s+/g, '-'); }
+
+  function tombolKotakDosen() {
+    if (!P.komplainSaya.length) return '';
+    const n = P.komplainSaya.filter((k) => k.status === 'Dikirim ke Dosen').length;
+    return `<button type="button" class="btn kolektif dosen" id="btn-kotak-dosen">📊 Komplain Nilai untuk Saya (dosen)
+      <small>${n ? n + ' perlu ditanggapi' : 'lihat riwayat'}</small></button>`;
+  }
+
+  /** Bagian khusus Kaprodi di detail komplain: kirim ke dosen + tanggapan dosen. */
+  function htmlKomplainKaprodi(d) {
+    const final = d.status === 'Selesai' || d.status === 'Ditolak';
+    const dosenAwal = (d.isi && d.isi.dosen) || '';
+    const daftar = P.daftarDosen || [];
+    return `
+      <h3 class="sub-judul" style="margin-top:0">1 · Kirim ke dosen pengampu</h3>
+      ${d.dikirim ? `<p class="langkah" style="margin-top:6px">📨 Terkirim: ${esc(d.dikirim)}</p>` : ''}
+      ${final ? '' : `
+        <label for="k-dosen">Dosen pengampu</label>
+        <select id="k-dosen">
+          ${daftar.map((n) => `<option ${n === dosenAwal ? 'selected' : ''}>${esc(n)}</option>`).join('')}
+          ${!dosenAwal || daftar.includes(dosenAwal) ? '' : `<option selected>${esc(dosenAwal)}</option>`}
+        </select>
+        <label for="k-catatan-dosen">Pesan untuk dosen <small class="bantu">(opsional)</small></label>
+        <textarea id="k-catatan-dosen" maxlength="500" placeholder="mis. Mohon diperiksa kembali nilai UAS mahasiswa ini.">${esc(d.catatanDosen)}</textarea>
+        <button type="button" class="btn wa" id="btn-kirim-dosen" style="background:#dc2626;margin-top:12px">📨 ${d.dikirim ? 'Kirim ulang ke Dosen' : 'Kirim ke Dosen'}</button>
+        <p class="bantu-field">Komplain muncul di akun Gizi-Link dosen (Layanan Permohonan, ada penanda “baru”). Status menjadi <b>Dikirim ke Dosen</b>.</p>
+        <a class="btn sekunder" id="btn-wa-dosen" target="_blank" rel="noopener" ${d.dikirim ? '' : 'hidden'}>💬 Kabari dosen via WA</a>`}
+
+      <h3 class="sub-judul">2 · Tanggapan dosen</h3>
+      ${d.hasil ? `<dl class="identitas tanggapan">
+          <dt>Hasil</dt><dd><b>${esc(d.hasil)}</b></dd>
+          ${d.nilaiBaru ? `<dt>Nilai baru</dt><dd><b>${esc(d.nilaiBaru)}</b></dd>` : ''}
+          <dt>Penjelasan</dt><dd>${esc(d.penjelasan)}</dd>
+          <dt>Waktu</dt><dd>${esc(d.ditanggapi)}</dd>
+        </dl>
+        ${final ? '' : '<button type="button" class="btn sekunder" id="btn-isi-keputusan">✍️ Isi keputusan dari tanggapan dosen</button>'}`
+      : `<p class="bantu" style="margin:4px 0 0">${d.dikirim ? 'Menunggu tanggapan dosen.' : 'Belum dikirim ke dosen.'}</p>`}
+      <hr class="pemisah">`;
+  }
+
+  function pesanWaDosen(d, namaDosen) {
+    return `Assalamu'alaikum, Bapak/Ibu ${namaDosen}.\nAda komplain nilai mahasiswa yang menunggu tanggapan Bapak/Ibu:\n\n` +
+      `No. ${d.no}\nMahasiswa: ${d.nama} (${d.nim})\nMata kuliah: ${(d.isi && d.isi.mata_kuliah) || '-'}\n\n` +
+      `Silakan buka Gizi-Link → Layanan Permohonan untuk melihat rincian dan mengirim tanggapan:\nhttps://jurusan-gizi.github.io/\n\nTerima kasih.`;
+  }
+
+  function pasangKomplainKaprodi(d) {
+    const wa = document.getElementById('btn-wa-dosen');
+    const sel = document.getElementById('k-dosen');
+    const setWa = () => { if (wa && sel) wa.href = 'https://wa.me/?text=' + encodeURIComponent(pesanWaDosen(d, sel.value)); };
+    if (sel) sel.onchange = setWa;
+    setWa();
+    const bk = document.getElementById('btn-kirim-dosen');
+    if (bk) bk.onclick = async () => {
+      if (!sel.value) return pesanForm('Pilih dosen pengampu.', 'k-dosen');
+      if (!confirm(`Kirim komplain ini ke ${sel.value}?`)) return;
+      const label = bk.innerHTML;
+      bk.disabled = true; bk.innerHTML = '<span class="putar kecil"></span> Mengirim…';
+      try {
+        const res = await api({ aksi: 'kirimDosen', token: sesi.token, no: d.no, dosen: sel.value,
+          catatanDosen: document.getElementById('k-catatan-dosen').value });
+        if (!res.ok) {
+          if (res.kode === 'AUTH') { SSO.keluar(false); return tampilMasuk('Sesi berakhir, silakan masuk lagi.'); }
+          return pesanForm(res.pesan || 'Gagal mengirim.');
+        }
+        Object.assign(d, { status: res.status, catatan: res.catatan, diperbarui: res.diperbarui, dikirim: res.dikirim, catatanDosen: res.catatanDosen });
+        d.isi = Object.assign({}, d.isi, { dosen: res.dosen });
+        if (res.reset) Object.assign(d, { hasil: '', nilaiBaru: '', penjelasan: '', ditanggapi: '' });
+        detailPantau(d.no);
+        const w = document.getElementById('btn-wa-dosen');
+        if (w) { w.hidden = false; w.classList.add('sorot'); }
+      } catch (e) {
+        pesanForm(navigator.onLine ? 'Server tidak merespons. Coba lagi.' : 'Tidak ada koneksi internet.');
+      } finally {
+        if (document.body.contains(bk)) { bk.disabled = false; bk.innerHTML = label; }
+      }
+    };
+    const bi = document.getElementById('btn-isi-keputusan');
+    if (bi) bi.onclick = () => {
+      const mk = (d.isi && d.isi.mata_kuliah) || '';
+      const teks = d.hasil === 'Nilai diubah'
+        ? `Komplain nilai ${mk} DITERIMA. Nilai diubah dari ${(d.isi && d.isi.nilai_tertera) || '-'} menjadi ${d.nilaiBaru}. Penjelasan dosen: ${d.penjelasan} Perubahan nilai akan diperbarui di SIAKAD.`
+        : `Komplain nilai ${mk} telah diperiksa bersama dosen pengampu. Nilai TETAP. Penjelasan dosen: ${d.penjelasan}`;
+      document.getElementById('s-status').value = d.hasil === 'Nilai diubah' ? 'Selesai' : 'Ditolak';
+      const c = document.getElementById('s-catatan');
+      c.value = teks.slice(0, 500); c.focus();
+    };
+  }
+
+  /* ----- Kotak masuk dosen ----- */
+  const KD = { semua: false };
+  function kotakDosen() {
+    const list = P.komplainSaya.filter((k) => KD.semua || k.status === 'Dikirim ke Dosen');
+    const perlu = P.komplainSaya.filter((k) => k.status === 'Dikirim ke Dosen').length;
+    $isi.innerHTML = `
+      <section class="kartu profil">
+        <div class="avatar" aria-hidden="true">${esc(inisial(P.staf.nama))}</div>
+        <div class="profil-teks">
+          <p class="salam">Komplain Nilai · dosen pengampu</p>
+          <p class="nama">${esc(P.staf.nama || '-')}</p>
+        </div>
+      </section>
+      <div class="chip-grup" role="group" aria-label="Saring" style="margin-top:14px">
+        <button type="button" class="chip" data-kd="0" aria-pressed="${!KD.semua}">Perlu ditanggapi <b>${perlu}</b></button>
+        <button type="button" class="chip" data-kd="1" aria-pressed="${KD.semua}">Semua <b>${P.komplainSaya.length}</b></button>
+      </div>
+      ${list.length ? `<ul class="riwayat pantau">${list.map((k) => `
+        <li data-kno="${esc(k.no)}" tabindex="0" role="button">
+          <span class="r-ikon" aria-hidden="true">📊</span>
+          <span class="r-jenis">${esc(k.nama)} <small class="r-nim">${esc(k.nim)}</small></span>
+          <span class="status ${kelasStatus(k.status)}">${esc(LABEL_PENDEK[k.status] || k.status)}</span>
+          <span class="r-info">${esc((k.rincian.find((r) => r.label === 'Nama mata kuliah') || {}).nilai || '')} · ${esc(k.prodi)}<br>${esc(k.no)} · ${esc(tglWaktu(k.waktu))}</span>
+        </li>`).join('')}</ul>`
+      : `<p class="kartu kosong">${P.komplainSaya.length ? 'Semua komplain sudah Anda tanggapi. 👍' : 'Belum ada komplain nilai yang dikirim Kaprodi kepada Anda.'}</p>`}
+      ${P.jenis.length ? '<button type="button" class="btn sekunder" id="btn-kembali" style="margin-top:16px">← Kembali ke pemantauan</button>' : ''}`;
+    $isi.querySelectorAll('[data-kd]').forEach((b) => b.onclick = () => { KD.semua = b.dataset.kd === '1'; kotakDosen(); });
+    $isi.querySelectorAll('[data-kno]').forEach((li) => {
+      const buka = () => detailDosen(li.dataset.kno);
+      li.onclick = buka; li.onkeydown = (e) => { if (e.key === 'Enter') buka(); };
+    });
+    const bk = document.getElementById('btn-kembali');
+    if (bk) bk.onclick = daftarPantau;
+    scrollTo(0, 0);
+  }
+
+  function detailDosen(no) {
+    const k = P.komplainSaya.find((x) => x.no === no);
+    const bisa = k.status === 'Dikirim ke Dosen' || k.status === 'Ditanggapi Dosen';
+    $isi.innerHTML = `
+      <section class="kartu">
+        <div class="form-judul">
+          <span class="app-ikon" style="--warna:#dc2626" aria-hidden="true">📊</span>
+          <div><h2>Komplain Nilai</h2><p class="bantu" style="margin:2px 0 0">${esc(k.no)} · ${esc(tglWaktu(k.waktu))}</p></div>
+        </div>
+        <dl class="identitas">
+          <dt>Nama</dt><dd>${esc(k.nama)}</dd>
+          <dt>NIM</dt><dd>${esc(k.nim)}</dd>
+          <dt>Prodi</dt><dd>${esc([k.prodi, k.kelas].filter(Boolean).join(' – '))}</dd>
+          ${k.rincian.map((r) => `<dt>${esc(r.label)}</dt><dd>${r.link ? `<a href="${esc(r.nilai)}" target="_blank" rel="noopener">Buka tautan ↗</a>` : esc(r.nilai)}</dd>`).join('')}
+        </dl>
+        ${k.catatanDosen ? `<p class="langkah">✉️ <b>Pesan Kaprodi:</b> ${esc(k.catatanDosen)}</p>` : ''}
+        <p class="bantu-field">Dikirim: ${esc(k.dikirim)}</p>
+      </section>
+
+      <form id="form-tanggapan" class="kartu" style="margin-top:12px" novalidate>
+        <h3 class="sub-judul" style="margin-top:0">Tanggapan untuk Kaprodi</h3>
+        ${k.keputusan ? `<p class="langkah">🏁 <b>Keputusan Kaprodi (${esc(k.status)}):</b> ${esc(k.keputusan)}</p>` : ''}
+        <fieldset class="pilih-hasil" ${bisa ? '' : 'disabled'}>
+          <label class="opsi"><input type="radio" name="hasil" value="Nilai diubah" ${k.hasil === 'Nilai diubah' ? 'checked' : ''}> <span>Komplain diterima, <b>nilai diubah</b></span></label>
+          <label class="opsi"><input type="radio" name="hasil" value="Nilai tetap" ${k.hasil === 'Nilai tetap' ? 'checked' : ''}> <span>Nilai <b>tetap</b> (komplain tidak diterima)</span></label>
+          <div id="blok-nilai" ${k.hasil === 'Nilai diubah' ? '' : 'hidden'}>
+            <label for="t-nilai">Nilai setelah dikoreksi<span class="wajib">*</span></label>
+            <input id="t-nilai" maxlength="50" placeholder="mis. B (74)" value="${esc(k.nilaiBaru)}">
+          </div>
+          <label for="t-penjelasan">Penjelasan<span class="wajib">*</span></label>
+          <textarea id="t-penjelasan" maxlength="1000" placeholder="mis. Setelah diperiksa ulang, nilai tugas 3 belum terinput.">${esc(k.penjelasan)}</textarea>
+        </fieldset>
+        ${k.ditanggapi ? `<p class="bantu-field">Tanggapan terakhir: ${esc(k.ditanggapi)}</p>` : ''}
+        <p id="pesan-form" class="pesan" role="alert" hidden></p>
+        ${bisa ? `<button type="submit" class="btn utama" id="btn-tanggapi">📤 ${k.hasil ? 'Perbarui tanggapan' : 'Kirim ke Kaprodi'}</button>
+          <p class="bantu-field">Perubahan nilai di SIAKAD tetap dilakukan sesuai prosedur setelah Kaprodi memutuskan.</p>` : ''}
+        <button type="button" class="btn sekunder" id="btn-kembali">← Kembali</button>
+      </form>`;
+    document.getElementById('btn-kembali').onclick = kotakDosen;
+    $isi.querySelectorAll('input[name="hasil"]').forEach((r) => r.onchange = () => {
+      document.getElementById('blok-nilai').hidden = !($isi.querySelector('input[name="hasil"]:checked') || {}).value
+        || $isi.querySelector('input[name="hasil"]:checked').value !== 'Nilai diubah';
+    });
+    document.getElementById('form-tanggapan').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const hasil = ($isi.querySelector('input[name="hasil"]:checked') || {}).value;
+      const nilaiBaru = document.getElementById('t-nilai').value.trim();
+      const penjelasan = document.getElementById('t-penjelasan').value.trim();
+      if (!hasil) return pesanForm('Pilih hasil tanggapan.');
+      if (hasil === 'Nilai diubah' && !nilaiBaru) return pesanForm('Isi nilai setelah dikoreksi.', 't-nilai');
+      if (!penjelasan) return pesanForm('Isi penjelasan untuk Kaprodi.', 't-penjelasan');
+      if (!confirm('Kirim tanggapan ini ke Kaprodi?')) return;
+      const btn = document.getElementById('btn-tanggapi');
+      const label = btn.innerHTML;
+      btn.disabled = true; btn.innerHTML = '<span class="putar kecil"></span> Mengirim…';
+      try {
+        const res = await api({ aksi: 'tanggapi', token: sesi.token, no: k.no, hasil, nilaiBaru, penjelasan });
+        if (!res.ok) {
+          if (res.kode === 'AUTH') { SSO.keluar(false); return tampilMasuk('Sesi berakhir, silakan masuk lagi.'); }
+          return pesanForm(res.pesan || 'Gagal mengirim.');
+        }
+        const ubah = { status: res.status, hasil: res.hasil, nilaiBaru: res.nilaiBaru, penjelasan: res.penjelasan, ditanggapi: res.ditanggapi };
+        Object.assign(k, ubah);
+        const d = P.data.find((x) => x.no === k.no);
+        if (d) Object.assign(d, ubah);
+        kotakDosen();
+      } catch (err) {
+        pesanForm(navigator.onLine ? 'Server tidak merespons. Coba lagi.' : 'Tidak ada koneksi internet.');
+      } finally {
+        if (document.body.contains(btn)) { btn.disabled = false; btn.innerHTML = label; }
+      }
+    });
     scrollTo(0, 0);
   }
 
@@ -684,7 +916,7 @@
     });
     if (d.kode === 'BSW') {
       // Usulan PERORANGAN ke Direktur: nota dinas yang sama dengan kolektif, berisi 1 mahasiswa
-      const beasiswa = String(i.beasiswa || '').trim();
+      const beasiswa = String((adm && adm._beasiswa) || i.beasiswa || '').trim();
       return { beasiswa, BEASISWA: beasiswa.toUpperCase(), tahun: String(new Date().getFullYear()), mhs: [barisBeasiswa(d, 0)] };
     }
     if (d.kode === 'KMB') return Object.assign(umum, {
@@ -696,9 +928,16 @@
   }
 
   async function unduhDraf(d, btn) {
-    const adm = isianAdmin(d);
+    let adm = isianAdmin(d);
     const kurang = (d.adminField || []).find((f) => f.wajib && !adm[f.id]);
     if (kurang) return pesanForm(`${kurang.label} wajib diisi sebelum membuat draf surat.`, 'adm-' + kurang.id);
+    if (d.kode === 'BSW') {
+      // Nama program diketik mahasiswa; admin memastikan/merapikan sebelum masuk nota
+      const nama = prompt('Nama program beasiswa yang tertulis di nota dinas (periksa / rapikan):', (d.isi && d.isi.beasiswa) || '');
+      if (nama === null) return;
+      if (!nama.trim()) return pesanForm('Nama program beasiswa wajib diisi.');
+      adm = Object.assign({}, adm, { _beasiswa: nama.trim() });
+    }
     const label = btn.innerHTML;
     btn.disabled = true; btn.innerHTML = '<span class="putar kecil"></span> Menyiapkan surat…';
     try {

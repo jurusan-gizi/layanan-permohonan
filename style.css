@@ -294,3 +294,19 @@ a.btn.sekunder { text-decoration: none; box-sizing: border-box; }
 .aksi-usulan { grid-column: 1 / 4; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .aksi-usulan .btn.kecil { width: auto; margin: 0; padding: 7px 11px; font-size: 13px; }
 section.kartu > label { display: block; font-size: 13px; font-weight: 700; margin: 14px 0 6px; }
+
+/* ===== Komplain Nilai ===== */
+.s-dikirim-ke-dosen { background: #fde7e7; color: #b42318; }
+.s-ditanggapi-dosen { background: #ede4ff; color: #6d28d9; }
+.stat-grid.banyak { grid-template-columns: repeat(4, 1fr); }
+.btn.kolektif.dosen { background: #fff1f1; color: #b42318; border-color: #f6c4c4; }
+.merah { color: #b42318; }
+.sub-judul { font-size: 14.5px; margin: 18px 0 4px; color: var(--tinta); }
+hr.pemisah { border: 0; border-top: 1.5px dashed #d5e5e3; margin: 18px 0 4px; }
+.identitas.tanggapan { background: #f6f3ff; border-radius: 10px; padding: 8px 10px; margin-top: 6px; }
+.pilih-hasil { border: 0; padding: 0; margin: 6px 0 0; min-width: 0; }
+.pilih-hasil .opsi { display: flex; gap: 8px; align-items: flex-start; font-weight: 500; margin: 8px 0; padding: 10px 12px; border: 1.5px solid #d5e5e3; border-radius: 12px; cursor: pointer; }
+.pilih-hasil .opsi:has(input:checked) { border-color: #00807e; background: #eef9f8; }
+.btn.sorot { box-shadow: 0 0 0 3px #fde68a; }
+.pilih-hasil .opsi input { width: auto; flex: 0 0 auto; margin: 3px 0 0; padding: 0; min-height: 0; box-shadow: none; }
+.pilih-hasil .opsi span { flex: 1; text-align: left; }
