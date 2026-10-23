@@ -59,7 +59,7 @@
         </div>
       </section>
 
-      ${P.jenis.some((j) => j.kode === 'KMB' || j.kode === 'BSW') ? `<button type="button" class="btn kolektif" id="btn-kolektif">📑 Usulan Kolektif ke Direktur
+      ${P.jenis.some((j) => j.kode === 'KMB') ? `<button type="button" class="btn kolektif" id="btn-kolektif">📑 Usulan Kolektif ke Direktur
           <small>${P.data.filter(belumDiusulkan).length} menunggu</small></button>` : ''}
 
       ${tombolKotakDosen()}
@@ -131,7 +131,7 @@
           <label for="adm-${esc(f.id)}">${esc(f.label)}${f.wajib ? '<span class="wajib">*</span>' : ''}</label>
           <input id="adm-${esc(f.id)}" ${f.tipe === 'tanggal' ? 'type="date"' : ''} value="${esc(d.adminIsi[f.id] || '')}">`).join('')}
         <p id="pesan-form" class="pesan" role="alert" hidden></p>
-        ${d.surat && !d.noUsulan ? `<button type="button" class="btn wa" id="btn-docx" style="background:#1d4ed8;margin-top:18px">📄 ${d.kode === 'BSW' ? 'Unduh Nota Dinas usulan perorangan (.docx)' : 'Unduh draf surat (.docx) untuk Srikandi'}</button>
+        ${d.surat && (!d.noUsulan || d.kode === 'BSW') ? `<button type="button" class="btn wa" id="btn-docx" style="background:#1d4ed8;margin-top:18px">📄 ${d.kode === 'BSW' ? 'Unduh Surat Keterangan (.docx) untuk Srikandi' : 'Unduh draf surat (.docx) untuk Srikandi'}</button>
           <p class="bantu-field">Nomor, tanggal, tanda tangan & nama penandatangan sengaja dikosongkan (diisi Srikandi). Status otomatis menjadi <b>Diproses</b>.</p>` : ''}
         ${d.kolektif ? `<p class="langkah" style="margin-top:16px">${d.noUsulan
             ? `📑 Sudah masuk usulan <b>${esc(d.noUsulan)}</b>. Kelola (unduh ulang, tandai selesai) di menu <b>Usulan Kolektif</b>.`
@@ -883,6 +883,12 @@
   // Akreditasi untuk Surat Keterangan Tidak Menerima Beasiswa
   const AKREDITASI = { pt: 'Politeknik Kesehatan Kemenkes Makassar / B', d3: 'Unggul', d4: 'Unggul', prof: 'Baik Sekali' };
   function angkatanDariNim(nim) { const m = String(nim || '').match(/^PO\d{6}(\d\d)/i); return m ? '20' + m[1] : ''; }
+  /** "5" → "V (Ganjil) Tahun Akademik 2026/2027" (TA berganti tiap Agustus). */
+  function teksSemester(n) {
+    if (!n) return '-';
+    const t = new Date(), y = t.getFullYear(), awal = t.getMonth() >= 7 ? y : y - 1;
+    return `${romawi(n)} (${Number(n) % 2 ? 'Ganjil' : 'Genap'}) Tahun Akademik ${awal}/${awal + 1}`;
+  }
   function romawi(n) { return ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'][Number(n)] || String(n || ''); }
   function barisBeasiswa(d, i) {
     const x = d.isi || {};
@@ -915,9 +921,21 @@
       alamat: i.alamat_mhs, judul: i.judul, data_diminta: i.data_diminta, lokasi: i.lokasi
     });
     if (d.kode === 'BSW') {
-      // Usulan PERORANGAN ke Direktur: nota dinas yang sama dengan kolektif, berisi 1 mahasiswa
+      // Surat Keterangan Tidak Sedang Menerima Beasiswa, ditandatangani Ketua Jurusan (TTE Srikandi)
+      const kel = kelompokProdi(d.prodi);
       const beasiswa = String((adm && adm._beasiswa) || i.beasiswa || '').trim();
-      return { beasiswa, BEASISWA: beasiswa.toUpperCase(), tahun: String(new Date().getFullYear()), mhs: [barisBeasiswa(d, 0)] };
+      return {
+        nama: d.nama, nim: d.nim,
+        ttl: [i.tempat_lahir, tglIndo(i.tanggal_lahir)].filter(Boolean).join(', '),
+        agama: i.agama || '-', nik: String(i.nik || '').replace(/^'/, '') || '-',
+        pt: AKREDITASI.pt,
+        program_pendidikan: kel === 'prof' ? 'Program Pendidikan Profesi' : 'Program Pendidikan Tinggi Vokasi',
+        prodi_akreditasi: kalimatProdi(d.prodi) + ' / ' + (AKREDITASI[kel] || '-'),
+        angkatan: d.angkatan || angkatanDariNim(d.nim) || '-',
+        semester: teksSemester(i.semester),
+        ipk: i.ipk || '-', alamat: i.alamat_ktp || '-', hp: i.no_hp || '-',
+        beasiswa
+      };
     }
     if (d.kode === 'KMB') return Object.assign(umum, {
       instansi: i.instansi, tujuan_instansi: i.pimpinan_instansi, alamat_instansi: i.alamat_instansi,
@@ -933,7 +951,7 @@
     if (kurang) return pesanForm(`${kurang.label} wajib diisi sebelum membuat draf surat.`, 'adm-' + kurang.id);
     if (d.kode === 'BSW') {
       // Nama program diketik mahasiswa; admin memastikan/merapikan sebelum masuk nota
-      const nama = prompt('Nama program beasiswa yang tertulis di nota dinas (periksa / rapikan):', (d.isi && d.isi.beasiswa) || '');
+      const nama = prompt('Kalimat "…dalam pengajuan ____" pada surat keterangan (periksa / rapikan nama program beasiswa):', (d.isi && d.isi.beasiswa) || '');
       if (nama === null) return;
       if (!nama.trim()) return pesanForm('Nama program beasiswa wajib diisi.');
       adm = Object.assign({}, adm, { _beasiswa: nama.trim() });
