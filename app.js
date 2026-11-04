@@ -883,6 +883,17 @@
   // Akreditasi untuk Surat Keterangan Tidak Menerima Beasiswa
   const AKREDITASI = { pt: 'Politeknik Kesehatan Kemenkes Makassar / B', d3: 'Unggul', d4: 'Unggul', prof: 'Baik Sekali' };
   function angkatanDariNim(nim) { const m = String(nim || '').match(/^PO\d{6}(\d\d)/i); return m ? '20' + m[1] : ''; }
+  /**
+   * Semester & tahun akademik hari ini dari angkatan (Agustus–Januari = ganjil, Februari–Juli = genap).
+   * Angkatan 2023 pada Nov 2026 → TA 2026/2027, semester 7.
+   */
+  function semesterOtomatis(d) {
+    const t = new Date(), y = t.getFullYear(), m = t.getMonth() + 1;
+    const awal = m >= 8 ? y : y - 1, ganjil = m >= 8 || m === 1;
+    const ang = Number(d.angkatan || angkatanDariNim(d.nim)) || 0;
+    const sem = ang && awal >= ang ? (awal - ang) * 2 + (ganjil ? 1 : 2) : '';
+    return { semester: sem ? String(sem) : '', ta: `${awal}/${awal + 1}` };
+  }
   /** "5" → "V (Ganjil) Tahun Akademik 2026/2027" (TA berganti tiap Agustus). */
   function teksSemester(n) {
     if (!n) return '-';
@@ -937,6 +948,15 @@
         beasiswa
       };
     }
+    if (d.kode === 'SKA') {
+      const w = semesterOtomatis(d);
+      return {
+        nama: d.nama, nim: d.nim,
+        ttl: [i.tempat_lahir, tglIndo(i.tanggal_lahir)].filter(Boolean).join(', '),
+        prodi_kalimat: kalimatProdi(d.prodi).replace(/^Prodi /, 'Program Studi '),
+        semester: (adm && adm._semester) || w.semester || '-', ta: w.ta
+      };
+    }
     if (d.kode === 'KMB') return Object.assign(umum, {
       instansi: i.instansi, tujuan_instansi: i.pimpinan_instansi, alamat_instansi: i.alamat_instansi,
       tujuan_bkd: i.bkd, alamat_bkd: i.alamat_bkd,
@@ -955,6 +975,13 @@
       if (nama === null) return;
       if (!nama.trim()) return pesanForm('Nama program beasiswa wajib diisi.');
       adm = Object.assign({}, adm, { _beasiswa: nama.trim() });
+    }
+    if (d.kode === 'SKA') {
+      const w = semesterOtomatis(d);
+      const sem = prompt(`Semester mahasiswa pada TA ${w.ta} (dihitung otomatis dari angkatan, periksa / ubah bila perlu):`, w.semester);
+      if (sem === null) return;
+      if (!/^\d{1,2}$/.test(sem.trim())) return pesanForm('Semester harus berupa angka.');
+      adm = Object.assign({}, adm, { _semester: sem.trim() });
     }
     const label = btn.innerHTML;
     btn.disabled = true; btn.innerHTML = '<span class="putar kecil"></span> Menyiapkan surat…';
