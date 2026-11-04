@@ -190,6 +190,12 @@
         return tampilPesan(esc(res.pesan || 'Gagal memuat layanan.'));
       }
       DATA = res;
+      // Tautan langsung ke satu formulir, mis. .../layanan-permohonan/?jenis=SKA (kartu khusus di Gizi-Link)
+      const langsung = (new URLSearchParams(location.search).get('jenis') || '').toUpperCase();
+      if (langsung && DATA.layanan.some((l) => l.kode === langsung)) {
+        history.replaceState(null, '', location.pathname);
+        return bukaForm(langsung);
+      }
       beranda();
     } catch (e) {
       tampilPesan(navigator.onLine ? 'Server tidak merespons. Coba muat ulang halaman sebentar lagi.' : 'Tidak ada koneksi internet.');
