@@ -937,6 +937,12 @@
       kelamin: i.kelamin, pekerjaan: i.kelamin === 'Perempuan' ? 'Mahasiswi' : 'Mahasiswa',
       alamat: i.alamat_mhs, judul: i.judul, data_diminta: i.data_diminta, lokasi: i.lokasi
     });
+    if (d.kode === 'IZP') return Object.assign(umum, {
+      tujuan: i.ditujukan, alamat_tujuan: i.alamat_tujuan,
+      ttl: [i.tempat_lahir, tglIndo(i.tanggal_lahir)].filter(Boolean).join(', '),
+      kelamin: i.kelamin, pekerjaan: i.kelamin === 'Perempuan' ? 'Mahasiswi' : 'Mahasiswa',
+      alamat: i.alamat_mhs, judul: i.judul, waktu: i.waktu, lokasi: i.lokasi
+    });
     if (d.kode === 'BSW') {
       // Surat Keterangan Tidak Sedang Menerima Beasiswa, ditandatangani Ketua Jurusan (TTE Srikandi)
       const kel = kelompokProdi(d.prodi);
